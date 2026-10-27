@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Angel: a live DPS meter for AION 2. Damage, DPS and healing for your whole party, on top of the game.">
+<meta property="og:title" content="Angel for AION 2">
+<meta property="og:description" content="The DPS meter AION 2 deserves.">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>Angel for AION 2</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  /* Linear's restraint in Angel's colours: near-black, hairline borders, a big
+     tight headline with a fading gradient, the product itself as the hero (built
+     here in HTML and running), then a bento of live fragments. */
+  :root {
+    --bg: #08090a;
+    --bg-2: #0f1011;
+    --card: #101113;
+    --fg: #f7f8f8;
+    --fg-2: #d0d6e0;
+    --muted: #8a8f98;
+    --faint: #62666d;
+    --line: rgb(255 255 255 / 0.08);
+    --line-2: rgb(255 255 255 / 0.05);
+    --accent: #5fd7ff;
+    --font: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 400 15px/1.6 var(--font); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  .gutter { padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+  @media (max-width: 480px) { .gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); } }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  a { color: inherit; text-decoration: none; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+  /* ---------------------------------------------------------- nav */
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 31; background: var(--bg); }
+  nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; backdrop-filter: blur(16px); background: rgb(8 9 10 / 0.7); border-bottom: 1px solid var(--line-2); }
+  nav .wrap { height: 60px; display: flex; align-items: center; gap: 28px; }
+  .logo { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .logo .mark { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: linear-gradient(180deg, #fff, #9aa3ad); color: #08090a; font: 700 13px var(--font); }
+  nav .links { display: flex; gap: 24px; font-size: 13.5px; color: var(--muted); }
+  nav .links a:hover { color: var(--fg); }
+  nav .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  @media (max-width: 820px) { nav .links { display: none; } }
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 10px; font-weight: 500; font-size: 14px; transition: background .2s, border-color .2s; white-space: nowrap; }
+  .btn.sm { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; }
+  .btn.light { background: var(--fg); color: #08090a; }
+  .btn.light:hover { background: #fff; }
+  .btn.dark { background: rgb(255 255 255 / 0.05); border: 1px solid var(--line); color: var(--fg); }
+  .btn.dark:hover { background: rgb(255 255 255 / 0.09); }
+
+  /* The language: a native select (keyboard, screen readers and phones get their
+     own picker), dressed as a quiet nav button with a globe. */
+  .lang { position: relative; display: inline-flex; align-items: center; height: 32px; border-radius: 8px; color: var(--muted); transition: color .2s, background .2s; }
+  .lang:hover, .lang:focus-within { color: var(--fg); background: rgb(255 255 255 / 0.05); }
+  .lang svg { position: absolute; left: 9px; width: 15px; height: 15px; pointer-events: none; }
+  .lang select { appearance: none; -webkit-appearance: none; height: 32px; margin: 0; padding: 0 12px 0 30px; border: 0; background: none; color: inherit; font: 500 13px var(--font); cursor: pointer; }
+  .lang select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 8px; }
+  .lang option { background: #111214; color: var(--fg); }
+
+  /* ---------------------------------------------------------- hero */
+  /* Clipped sideways: the tilted window's near edge reaches past the page. */
+  .hero { padding-block: 96px 40px; position: relative; overflow-x: clip; }
+  .hero-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 26px; }
+  .pill { display: inline-flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid var(--line); background: rgb(255 255 255 / 0.03); font-size: 13px; color: var(--fg-2); max-width: 100%; }
+  .pill b { font: 600 11px var(--mono); color: #08090a; background: var(--accent); border-radius: 999px; padding: 3px 8px; }
+  .pill .arr { color: var(--muted); }
+  h1 { margin: 0; max-width: 15ch; font-weight: 600; font-size: clamp(40px, 7.2vw, 84px); line-height: 1.04; letter-spacing: -0.045em; text-wrap: balance; overflow-wrap: break-word;
+    background: linear-gradient(180deg, #fff 30%, rgb(255 255 255 / 0.55)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* Words split for the opening carry the gradient themselves: blurred and moved,
+     each is its own layer, which the heading's clipped background can't reach. */
+  h1 > span { background: inherit; -webkit-background-clip: text; background-clip: text; }
+  .sub { margin: 0; max-width: 54ch; font-size: clamp(16px, 1.6vw, 19px); line-height: 1.55; color: var(--muted); }
+  .sub b { color: var(--fg-2); font-weight: 500; }
+  .row-ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+
+  /* The product, tilted back, straightening as the page scrolls. */
+  .stage { position: relative; margin-top: 64px; perspective: 2000px; }
+  .stage::before { content: ""; position: absolute; left: 10%; right: 10%; top: -60px; height: 300px; pointer-events: none;
+    background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%); filter: blur(20px); }
+  .tilt { position: relative; transform: rotateX(24deg) scale(0.94); transform-origin: center top; }
+  .frame { position: relative; border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 30%), #050506;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6), 0 50px 120px rgb(0 0 0 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.06); overflow: hidden; }
+  .frame-fit { position: relative; width: 100%; overflow: hidden; }
+  .stage::after { content: ""; position: absolute; inset: auto 0 -2px; height: 30%; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
+
+  /* The app, at its real size (1100 × 640), scaled to the frame by script. */
+  .app { width: 1100px; height: 640px; transform-origin: top left; display: flex; flex-direction: column; font-size: 13px; color: var(--fg); }
+  .app-bar { height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; font-weight: 600; font-size: 12px; }
+  .app-bar .wc { margin-left: auto; display: flex; gap: 16px; color: var(--faint); font-size: 13px; }
+  .app-body { flex: 1; min-height: 0; display: flex; }
+  .side { width: 248px; flex: none; padding: 4px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .fcard { height: 50px; border-radius: 12px; padding: 7px 12px; display: flex; flex-direction: column; justify-content: center; background: rgb(255 255 255 / 0.03); }
+  .fcard.on { background: rgb(255 255 255 / 0.08); }
+  .fcard b { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  .fcard b i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .fcard.on b { color: var(--accent); }
+  .fcard span { font: 400 11px var(--mono); color: var(--muted); }
+  .main { flex: 1; min-width: 0; padding: 4px 18px 0 22px; display: flex; flex-direction: column; gap: 14px; }
+  .head { display: flex; align-items: center; gap: 8px; }
+  .head h3 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; flex: 1; }
+  .chip { height: 30px; padding: 0 12px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; background: rgb(255 255 255 / 0.07); white-space: nowrap; }
+  .chip.acc { background: var(--accent); color: #000; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .stat { border-radius: 18px; padding: 10px 14px; background: rgb(255 255 255 / 0.045); min-width: 0; }
+  .stat small { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat b { font: 600 15px var(--mono); }
+  .stat b.acc { color: var(--accent); }
+  .stat em { font-style: normal; color: var(--accent); font: 600 15px var(--mono); }
+  .thead, .trow { display: grid; grid-template-columns: 1.6fr 34px 46px 1fr 62px 62px 62px 62px 30px; align-items: center; gap: 0 12px; padding: 0 12px; }
+  .thead { font-size: 11px; color: var(--muted); }
+  .thead span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thead span:nth-child(n+2), .trow > span:nth-child(n+2) { text-align: right; }
+  .tbody { display: flex; flex-direction: column; gap: 4px; }
+  .trow { height: 44px; border-radius: 16px; background: rgb(255 255 255 / 0.04); }
+  .who { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .who .ic { width: 26px; height: 26px; flex: none; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+  .who div { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+  .who b { font-weight: 500; font-size: 13px; }
+  .who small { color: var(--muted); font-size: 11px; }
+  .trow.me .who { color: var(--accent); }
+  .trow.me .who b { font-weight: 600; }
+  .trow .m { color: var(--muted); font: 400 12px var(--mono); }
+  .trow .v { font: 600 12.5px var(--mono); }
+  .bar { height: 3px; border-radius: 99px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 100%; transform-origin: left; background: var(--muted); border-radius: 99px; }
+  .trow.me .bar i { background: var(--accent); }
+  .chart { flex: 1; min-height: 0; padding: 4px 0 0; display: flex; flex-direction: column; gap: 6px; }
+  .chart small { font-size: 11.5px; color: var(--muted); }
+  .chart svg { flex: 1; width: 100%; }
+
+  /* ---------------------------------------------------------- classes strip */
+  .classes { padding-block: 40px 56px; }
+  .classes p { margin: 0 0 22px; text-align: center; font-size: 13.5px; color: var(--muted); }
+  .classes .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 38px; color: var(--faint); }
+  .classes .cl { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 500; transition: color .25s; }
+  .classes .cl:hover { color: var(--fg); }
+  .classes .cl i { width: 22px; height: 22px; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+
+  /* ---------------------------------------------------------- sections */
+  section.block { padding-block: 96px; border-top: 1px solid var(--line-2); }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+  .kicker i { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+  h2 { margin: 0; max-width: 20ch; font-weight: 600; font-size: clamp(30px, 4.4vw, 52px); line-height: 1.08; letter-spacing: -0.04em; text-wrap: balance; overflow-wrap: break-word;
+    background: linear-gradient(180deg, #fff 40%, rgb(255 255 255 / 0.6)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { margin: 18px 0 0; max-width: 56ch; color: var(--muted); font-size: 17px; }
+
+  .bento { margin-top: 56px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+  .tile { position: relative; grid-column: span 2; min-width: 0; border-radius: 18px; border: 1px solid var(--line); overflow: hidden;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.035), rgb(255 255 255 / 0.01) 40%), var(--card); display: flex; flex-direction: column; }
+  .tile.w3 { grid-column: span 3; }
+  .tile.w4 { grid-column: span 4; }
+  @media (max-width: 960px) { .tile, .tile.w3, .tile.w4 { grid-column: span 3; } }
+  @media (max-width: 640px) { .bento { grid-template-columns: 1fr; } .tile, .tile.w3, .tile.w4 { grid-column: auto; } }
+  .tile .vis { position: relative; flex: 1; min-height: 210px; padding: 22px; display: flex; align-items: center; justify-content: center; }
+  .tile .txt { padding: 0 22px 22px; }
+  .tile h4 { margin: 0 0 4px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .tile p { margin: 0; font-size: 14px; color: var(--muted); max-width: 44ch; }
+
+  /* overlay replica */
+  .ov { width: 100%; max-width: 360px; border-radius: 12px; border: 1px solid var(--line); background: rgb(0 0 0 / 0.86); font-size: 12.5px; overflow: hidden; box-shadow: 0 20px 50px rgb(0 0 0 / 0.5); }
+  .ov-bar { display: flex; align-items: center; height: 36px; padding: 0 12px; gap: 12px; color: rgb(255 255 255 / 0.55); font-weight: 500; font-size: 12px; }
+  .ov-bar .sp { flex: 1; }
+  .ov-t { padding: 0 12px 10px; }
+  .ov-t b { display: block; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .ov-t small { display: flex; gap: 10px; color: var(--muted); font-size: 11.5px; }
+  .ov-t small .r { margin-left: auto; color: var(--fg); white-space: nowrap; }
+  .ov-rows { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 12px; }
+  .orow { position: relative; display: flex; align-items: center; gap: 8px; height: 29px; padding: 0 10px 0 8px; border-radius: 8px; overflow: hidden; background: rgb(255 255 255 / 0.06); }
+  .orow .fill { position: absolute; inset: 0; transform-origin: left; background: rgb(255 255 255 / 0.08); }
+  .orow.me .fill { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .orow .ic { position: relative; width: 20px; height: 20px; flex: none; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+  .orow .nm { position: relative; flex: 1; font-weight: 600; }
+  .orow.me { color: var(--accent); }
+  .orow .v { position: relative; color: var(--fg); font: 600 12px var(--mono); }
+  .orow .p { position: relative; width: 4ch; text-align: right; color: var(--muted); font: 400 11.5px var(--mono); }
+
+  /* skills */
+  .skills { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+  .sk { display: grid; grid-template-columns: 1fr 120px 46px 54px; gap: 12px; align-items: center; font-size: 13px; }
+  @media (max-width: 480px) { .sk { grid-template-columns: 1fr 60px 46px 54px; } }
+  .sk b { font-weight: 500; }
+  .sk small { color: var(--muted); font: 400 11.5px var(--mono); text-align: right; }
+  .sk .v { font: 600 12.5px var(--mono); text-align: right; }
+
+  /* kill timer */
+  .kill { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 14px; }
+  .kill .big { font: 600 54px/1 var(--mono); letter-spacing: -0.04em; }
+  .hp { height: 8px; border-radius: 99px; background: rgb(255 255 255 / 0.08); overflow: hidden; }
+  .hp i { display: block; height: 100%; width: 100%; transform-origin: left; background: linear-gradient(90deg, #f43f5e, #fb7185); border-radius: 99px; }
+  .kill .meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+  .kill .meta span:first-child { font-family: var(--mono); white-space: nowrap; }
+  .kill .meta span:last-child { text-align: right; }
+
+  /* events */
+  .events { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 6px; }
+  .ev { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 10px; background: rgb(255 255 255 / 0.04); font-size: 13px; }
+  .ev i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+  .ev b { flex: 1; font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev span { font: 500 12px var(--mono); color: var(--muted); white-space: nowrap; }
+  .ev.soon span { color: var(--accent); }
+
+  /* share card */
+  .card { width: 100%; max-width: 360px; border-radius: 14px; border: 1px solid var(--line); background: #0a0a0a; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .card h5 { margin: 0; font-size: 15px; font-weight: 700; }
+  .card .k { font-size: 11.5px; color: #34d399; font-weight: 600; }
+  .crow { position: relative; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border-radius: 7px; background: #141414; overflow: hidden; font-size: 12px; }
+  .crow .f { position: absolute; inset: 0 auto 0 0; background: rgb(255 255 255 / 0.07); }
+  .crow.me .f { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+  .crow b { position: relative; flex: 1; font-weight: 600; }
+  .crow.me b { color: var(--accent); }
+  .crow span { position: relative; font: 600 11.5px var(--mono); }
+  .card .foot { display: flex; justify-content: space-between; color: var(--faint); font-size: 10.5px; padding-top: 4px; border-top: 1px solid #222; }
+
+  /* themes */
+  .themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; max-width: 380px; }
+  @media (max-width: 380px) { .themes { grid-template-columns: repeat(2, 1fr); } }
+  .themes button { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--g); color: var(--fg); font: 500 12.5px var(--font); cursor: pointer; min-width: 0; }
+  .themes button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .themes button[aria-pressed="true"] { border-color: var(--c); }
+  .themes button i { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--c); }
+
+  /* ---------------------------------------------------------- how */
+  .how { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  @media (max-width: 820px) { .how { grid-template-columns: 1fr; } }
+  .how > div { padding: 28px; display: flex; flex-direction: column; gap: 10px; background: var(--bg-2); }
+  .how > div + div { border-left: 1px solid var(--line); }
+  @media (max-width: 820px) { .how > div + div { border-left: 0; border-top: 1px solid var(--line); } }
+  .how .k { font: 500 11.5px var(--mono); color: var(--faint); letter-spacing: 0.08em; }
+  .how h4 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .how p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .facts { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .facts span { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--fg-2); }
+
+  /* ---------------------------------------------------------- end */
+  .end { padding-block: 120px 96px; border-top: 1px solid var(--line-2); text-align: center; }
+  .end .wrap { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+  .end h2 { max-width: 18ch; margin: 0 auto; }
+  .steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 18px; color: var(--muted); font-size: 14px; }
+  .steps span { display: inline-flex; align-items: center; gap: 8px; }
+  .steps b { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); font: 500 11px var(--mono); color: var(--fg); }
+  footer { padding-block: 28px 48px; border-top: 1px solid var(--line-2); color: var(--faint); font-size: 12.5px; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; }
+</style>
+
+<nav class="gutter">
+  <div class="wrap">
+    <a class="logo" href="#top"><span class="mark">A</span>Angel</a>
+    <div class="links"><a href="#features" data-t="navFeatures">Features</a><a href="#how" data-t="navHow">How it works</a><a href="#get" data-t="navGet">Get started</a></div>
+    <div class="actions">
+      <label class="lang">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <select id="lang" aria-label="Language"></select>
+      </label>
+      <a class="btn sm light buy" href="https://funpay.com/lots/offer?id=80614946" target="_blank" rel="noopener" data-t="buy">Get Angel</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero gutter" id="top">
+  <div class="wrap hero-copy">
+    <a class="pill" href="#features"><b>1.0</b><span data-t="pill">Angel is out for AION 2</span> <span class="arr">→</span></a>
+    <h1 id="headline" data-t="h1">The DPS meter AION 2 deserves.</h1>
+    <p class="sub" data-h="sub">Live damage, DPS and healing for <b>everyone in your party</b>, on top of the game while you play. Then every fight, broken down skill by skill.</p>
+    <div class="row-ctas"><a class="btn light buy" href="https://funpay.com/lots/offer?id=80614946" target="_blank" rel="noopener" data-t="buy">Get Angel</a><a class="btn dark" href="#how" data-t="navHow">How it works</a></div>
+  </div>
+  <div class="wrap stage" id="stage">
+    <div class="tilt" id="tilt">
+      <div class="frame"><div class="frame-fit" id="fit">
+        <div class="app" id="app" aria-label="Angel's main window during a boss fight (live demo, sample party)">
+          <div class="app-bar"><span class="mark" style="width:16px;height:16px;border-radius:4px;display:grid;place-items:center;background:#fff;color:#000;font:700 10px var(--font)">A</span>Angel<span class="wc">— ▢ ✕</span></div>
+          <div class="app-body">
+            <div class="side">
+              <div class="fcard on"><b><i></i>Executioner Nua</b><span id="a-side">21:42 · 0</span></div>
+              <div class="fcard"><b>Wraith Giselle</b><span>21:38 · 1.28m</span></div>
+              <div class="fcard"><b>Melted Danar</b><span>21:31 · 2.04m</span></div>
+              <div class="fcard"><b>Watcher Kaira</b><span>21:20 · 1.67m</span></div>
+            </div>
+            <div class="main">
+              <div class="head"><h3>Executioner Nua</h3><span class="chip">■ <span data-t="stop">Stop</span></span><span class="chip" data-t="copy">Copy stats</span><span class="chip acc" data-t="overlay">Overlay</span></div>
+              <div class="stats">
+                <div class="stat"><small data-t="time">Time</small><b class="acc" id="a-time">0:00</b></div>
+                <div class="stat"><small data-t="damage">Damage</small><b id="a-dmg">0</b></div>
+                <div class="stat"><small>DPS</small><b id="a-dps">0</b></div>
+                <div class="stat"><small data-t="killIn">Kill in</small><b class="acc" id="a-ttk">~0:48</b></div>
+                <div class="stat"><small data-t="best">My best</small><em>▲ 12%</em></div>
+              </div>
+              <div class="thead"><span data-t="name">Name</span><span data-t="lvl">Lvl</span><span data-t="gear">Gear</span><span></span><span>DPS</span><span data-t="damage">Damage</span><span data-t="healing">Healing</span><span data-t="taken">Taken</span><span>%</span></div>
+              <div class="tbody" id="a-rows"></div>
+              <div class="chart"><small data-t="partyDamage">Party damage</small><svg id="a-chart" viewBox="0 0 800 120" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</header>
+
+<section class="classes gutter" aria-label="Classes">
+  <div class="wrap">
+    <p data-t="classes">Counts every class, healers and tanks included</p>
+    <div class="row" id="classes"></div>
+  </div>
+</section>
+
+<section class="block gutter" id="features">
+  <div class="wrap">
+    <div class="kicker"><i></i><span data-t="navFeatures">Features</span></div>
+    <h2 data-t="h2Features">Built for the fight, not for the spreadsheet.</h2>
+    <p class="lead" data-t="leadFeatures">Angel counts you and your party, nobody else. Every fight is kept, and every number opens up.</p>
+
+    <div class="bento">
+      <div class="tile w4">
+        <div class="vis" style="background: radial-gradient(ellipse at 70% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%)">
+          <div class="ov">
+            <div class="ov-bar"><span>Angel</span><span class="sp"></span><span>■ <span data-t="stop">Stop</span></span><span>⧉</span><span>◐</span><span>✕</span></div>
+            <div class="ov-t"><b>Executioner Nua</b><small><span class="num" id="o-time">0:00</span><span>DPS <span class="num" id="o-dps">0</span></span><span class="r"><span data-t="killIn">Kill in</span> <span class="num" id="o-ttk">~0:48</span></span></small></div>
+            <div class="ov-rows" id="o-rows"></div>
+          </div>
+        </div>
+        <div class="txt"><h4 data-t="t1h">An overlay that stays out of the way</h4><p data-t="t1p">Always on top of AION 2, never steals focus. Set its opacity, fold it down to just your row, stop a fight to clear it.</p></div>
+      </div>
+      <div class="tile">
+        <div class="vis">
+          <div class="kill"><div class="big num" id="k-big">~0:21</div><div class="hp"><i id="k-hp"></i></div><div class="meta"><span>HP <span id="k-hpv">38%</span></span><span data-t="pace">left at the party's pace</span></div></div>
+        </div>
+        <div class="txt"><h4 data-t="t2h">Kill timer</h4><p data-t="t2p">Time left on the boss from its real HP, and your best on it.</p></div>
+      </div>
+      <div class="tile w3">
+        <div class="vis">
+          <div class="skills" id="skills"></div>
+        </div>
+        <div class="txt"><h4 data-t="t3h">Every skill, opened up</h4><p data-t="t3p">Crit rate, biggest hit and casts per skill, and which boss skills hit you hardest.</p></div>
+      </div>
+      <div class="tile w3">
+        <div class="vis">
+          <div class="events" id="events"></div>
+        </div>
+        <div class="txt"><h4 data-t="t4h">Events and field bosses</h4><p data-t="t4p">Respawn timers and the event schedule, with a reminder on top of the game before each one.</p></div>
+      </div>
+      <div class="tile w3">
+        <div class="vis">
+          <div class="card">
+            <h5>Wraith Giselle</h5><div class="k" id="c-killed">Killed in 2:31 · DPS 54.3k</div>
+            <div class="crow me"><span class="f" style="width:100%"></span><b>Seraphine</b><span>19.8k</span></div>
+            <div class="crow"><span class="f" style="width:84%"></span><b>Mirra</b><span>16.6k</span></div>
+            <div class="crow"><span class="f" style="width:71%"></span><b>Kaelen</b><span>14.1k</span></div>
+            <div class="crow"><span class="f" style="width:19%"></span><b>Thoren</b><span>3.8k</span></div>
+            <div class="foot"><span>21:38</span><span>Angel</span></div>
+          </div>
+        </div>
+        <div class="txt"><h4 data-t="t5h">Post the kill</h4><p data-t="t5p">Copy any fight as a clean card for Discord, or as text for the game chat.</p></div>
+      </div>
+      <div class="tile w3">
+        <div class="vis"><div class="themes" id="themes" role="group" aria-label="Themes"></div></div>
+        <div class="txt"><h4 data-t="t6h">Six dark themes</h4><p data-t="t6p">Each one recolours the app, the overlay and the notes. Pick one: this page wears it too.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block gutter" id="how">
+  <div class="wrap">
+    <div class="kicker"><i></i><span data-t="navHow">How it works</span></div>
+    <h2 data-t="h2How">Angel reads the fight. It never touches the game.</h2>
+    <p class="lead" data-t="leadHow">The server already tells your game client every hit. Angel listens to that same traffic on your PC and counts it.</p>
+    <div class="how">
+      <div><span class="k">SERVER</span><h4 data-t="s1h">The game server</h4><p data-t="s1p">Sends your client each hit, heal and kill as the fight happens.</p></div>
+      <div><span class="k">NPCAP</span><h4 data-t="s2h">Your network card</h4><p data-t="s2p">Npcap, the free driver Wireshark uses, lets Angel see that traffic. Angel installs it for you.</p></div>
+      <div><span class="k">ANGEL</span><h4 data-t="s3h">Counted. Nothing sent.</h4><p data-t="s3p">Packets become damage and DPS. Angel sends nothing and writes nothing to the game.</p></div>
+    </div>
+    <div class="facts"><span data-t="f1">No injection</span><span data-t="f2">No memory reading</span><span data-t="f3">Works through VPNs and ping boosters</span><span data-t="f4">Names and icons built in</span><span data-t="f5">12 languages</span><span>Windows 10 / 11</span></div>
+  </div>
+</section>
+
+<section class="end gutter" id="get">
+  <div class="wrap">
+    <h2 data-t="h2End">Know who carries. Starting with the next pull.</h2>
+    <div class="steps"><span><b>1</b><span data-t="st1">Buy on FunPay</span></span><span><b>2</b><span data-t="st2">Run Angel 1.0.exe</span></span><span><b>3</b><span data-t="st3">Install Npcap and play</span></span></div>
+    <a class="btn light buy" href="https://funpay.com/lots/offer?id=80614946" target="_blank" rel="noopener" data-t="buy">Get Angel</a>
+  </div>
+</section>
+
+<footer class="gutter">
+  <div class="wrap"><span>Angel 1.0</span><span data-t="disc">Fan-made tool. Not affiliated with NCSOFT. AION is a trademark of NCSOFT Corporation.</span></div>
+</footer>
+
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="vendor/Flip.min.js"></script>
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const G = typeof gsap !== 'undefined' && !reduce;
+  if (G) gsap.registerPlugin(ScrollTrigger, Flip);
+  const ICON = (n) => `url(art/${n}.png)`;
+  const short = (n) => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'm' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'k' : String(Math.round(n));
+  const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  // ---------------------------------------------------------- languages
+  // The app's twelve, in its own order for the picker. Every string below is listed
+  // in this column order: en, de, fr, es, it, pt, pl, nl, cs, sv, tr, ru.
+  const LANGS = [['en', 'English'], ['ru', 'Русский'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['nl', 'Nederlands'], ['cs', 'Čeština'], ['sv', 'Svenska'], ['tr', 'Türkçe']];
+  const COL = ['en', 'de', 'fr', 'es', 'it', 'pt', 'pl', 'nl', 'cs', 'sv', 'tr', 'ru'];
+  const T = {
+    navFeatures: ["Features", "Funktionen", "Fonctionnalités", "Funciones", "Funzioni", "Recursos", "Funkcje", "Functies", "Funkce", "Funktioner", "Özellikler", "Возможности"],
+    navHow: ["How it works", "So funktioniert’s", "Fonctionnement", "Cómo funciona", "Come funziona", "Como funciona", "Jak to działa", "Hoe het werkt", "Jak to funguje", "Så fungerar det", "Nasıl çalışır", "Как это работает"],
+    navGet: ["Get started", "Loslegen", "Commencer", "Empezar", "Inizia", "Começar", "Zacznij", "Aan de slag", "Začít", "Kom igång", "Başla", "Начать"],
+    buy: ["Get Angel", "Angel kaufen", "Obtenir Angel", "Consigue Angel", "Ottieni Angel", "Obter o Angel", "Kup Angel", "Angel kopen", "Koupit Angel", "Skaffa Angel", "Angel’ı al", "Купить Angel"],
+    pill: ["Angel is out for AION 2", "Angel ist da für AION 2", "Angel est disponible pour AION 2", "Angel ya está disponible para AION 2", "Angel è disponibile per AION 2", "O Angel chegou ao AION 2", "Angel jest już dostępny dla AION 2", "Angel is uit voor AION 2", "Angel je venku pro AION 2", "Angel är här för AION 2", "Angel, AION 2 için çıktı", "Angel вышел для AION 2"],
+    h1: ["The DPS meter AION 2 deserves.", "Der DPS-Meter, den AION 2 verdient.", "Le compteur de DPS que mérite AION 2.", "El medidor de DPS que AION 2 merece.", "Il DPS meter che AION 2 merita.", "O medidor de DPS que o AION 2 merece.", "Licznik DPS, na jaki zasługuje AION 2.", "De DPS-meter die AION 2 verdient.", "DPS metr, jaký si AION 2 zaslouží.", "DPS-mätaren som AION 2 förtjänar.", "AION 2’nin hak ettiği DPS ölçer.", "DPS-метр, которого заслуживает AION 2."],
+    sub: [
+      "Live damage, DPS and healing for <b>everyone in your party</b>, on top of the game while you play. Then every fight, broken down skill by skill.",
+      "Live-Schaden, DPS und Heilung für <b>deine ganze Gruppe</b>, direkt über dem Spiel. Danach jeder Kampf, Fertigkeit für Fertigkeit aufgeschlüsselt.",
+      "Dégâts, DPS et soins de <b>tout votre groupe</b> en direct, par-dessus le jeu. Puis chaque combat, détaillé compétence par compétence.",
+      "Daño, DPS y curación de <b>todo tu grupo</b> en directo, encima del juego. Y después cada combate, desglosado habilidad por habilidad.",
+      "Danni, DPS e cure di <b>tutto il tuo gruppo</b> in tempo reale, sopra il gioco. Poi ogni scontro, analizzato abilità per abilità.",
+      "Dano, DPS e cura de <b>todo o seu grupo</b> ao vivo, por cima do jogo. Depois, cada luta detalhada habilidade por habilidade.",
+      "Obrażenia, DPS i leczenie <b>całej drużyny</b> na żywo, nad grą. A potem każda walka rozłożona na umiejętności.",
+      "Live schade, DPS en genezing voor <b>je hele groep</b>, bovenop de game. Daarna elk gevecht, vaardigheid voor vaardigheid uitgesplitst.",
+      "Poškození, DPS a léčení <b>celé tvé skupiny</b> živě, přímo nad hrou. A potom každý souboj rozebraný dovednost po dovednosti.",
+      "Skada, DPS och helning för <b>hela din grupp</b> live, ovanpå spelet. Sedan varje strid, uppdelad förmåga för förmåga.",
+      "<b>Tüm grubunun</b> hasarı, DPS’i ve iyileştirmesi canlı olarak, oyunun üstünde. Ardından her savaş, yetenek yetenek ayrıntılı.",
+      "Урон, DPS и лечение <b>всей твоей группы</b> в реальном времени, поверх игры. А после — каждый бой, разобранный по скиллам.",
+    ],
+    classes: ["Counts every class, healers and tanks included", "Zählt jede Klasse, Heiler und Tanks inklusive", "Compte toutes les classes, soigneurs et tanks compris", "Cuenta todas las clases, sanadores y tanques incluidos", "Conta ogni classe, guaritori e tank compresi", "Conta todas as classes, curandeiros e tanques incluídos", "Liczy każdą klasę, łącznie z healerami i tankami", "Telt elke klasse, healers en tanks inbegrepen", "Počítá všechna povolání včetně healerů a tanků", "Räknar alla klasser, healers och tanks inräknade", "Şifacılar ve tanklar dahil her sınıfı sayar", "Считает все классы, включая хилов и танков"],
+    h2Features: ["Built for the fight, not for the spreadsheet.", "Gemacht für den Kampf, nicht für die Tabelle.", "Pensé pour le combat, pas pour le tableur.", "Hecho para el combate, no para la hoja de cálculo.", "Fatto per lo scontro, non per il foglio di calcolo.", "Feito para a luta, não para a planilha.", "Stworzony do walki, nie do arkusza.", "Gemaakt voor het gevecht, niet voor de spreadsheet.", "Stvořený pro boj, ne pro tabulky.", "Byggd för striden, inte för kalkylarket.", "Tablolar için değil, savaş için yapıldı.", "Сделан для боя, а не для таблиц."],
+    leadFeatures: ["Angel counts you and your party, nobody else. Every fight is kept, and every number opens up.", "Angel zählt dich und deine Gruppe, sonst niemanden. Jeder Kampf bleibt gespeichert, jede Zahl lässt sich aufklappen.", "Angel compte vous et votre groupe, personne d’autre. Chaque combat est conservé, chaque chiffre se déplie.", "Angel cuenta a ti y a tu grupo, a nadie más. Cada combate se guarda y cada número se puede desplegar.", "Angel conta te e il tuo gruppo, nessun altro. Ogni scontro resta salvato e ogni numero si apre.", "O Angel conta você e o seu grupo, mais ninguém. Cada luta fica guardada e cada número se abre.", "Angel liczy ciebie i twoją drużynę, nikogo więcej. Każda walka jest zapisana, każdą liczbę można rozwinąć.", "Angel telt jou en je groep, verder niemand. Elk gevecht wordt bewaard en elk getal klapt open.", "Angel počítá tebe a tvou skupinu, nikoho jiného. Každý souboj se uloží a každé číslo jde rozbalit.", "Angel räknar dig och din grupp, ingen annan. Varje strid sparas och varje siffra går att öppna.", "Angel seni ve grubunu sayar, başka kimseyi değil. Her savaş saklanır, her sayı açılabilir.", "Angel считает тебя и твою группу, больше никого. Каждый бой сохраняется, и каждую цифру можно раскрыть."],
+    t1h: ["An overlay that stays out of the way", "Ein Overlay, das nicht stört", "Un overlay qui sait se faire oublier", "Un overlay que no estorba", "Un overlay che non intralcia", "Um overlay que não atrapalha", "Nakładka, która nie przeszkadza", "Een overlay die niet in de weg zit", "Překryv, který nepřekáží", "En overlay som håller sig undan", "Yoluna çıkmayan bir katman", "Оверлей, который не мешает"],
+    t1p: ["Always on top of AION 2, never steals focus. Set its opacity, fold it down to just your row, stop a fight to clear it.", "Immer über AION 2, ohne den Fokus zu stehlen. Deckkraft einstellen, auf deine Zeile verkleinern, Kampf stoppen und leeren.", "Toujours au-dessus d’AION 2, sans voler le focus. Réglez l’opacité, réduisez-le à votre ligne, arrêtez un combat pour le vider.", "Siempre encima de AION 2 y sin robar el foco. Ajusta la opacidad, redúcelo a tu fila, detén un combate para limpiarlo.", "Sempre sopra AION 2, senza rubare il focus. Regola l’opacità, riducilo alla tua riga, ferma uno scontro per azzerarlo.", "Sempre por cima do AION 2, sem roubar o foco. Ajuste a opacidade, reduza à sua linha, pare uma luta para limpá-lo.", "Zawsze nad AION 2 i nie kradnie fokusu. Ustaw przezroczystość, zwiń do swojego wiersza, zatrzymaj walkę, by ją wyczyścić.", "Altijd boven AION 2, zonder de focus te stelen. Stel de doorzichtigheid in, vouw hem in tot jouw rij, stop een gevecht om hem te wissen.", "Vždy nad AION 2 a nekrade fokus. Nastav průhlednost, sbal ho na svůj řádek, zastav souboj a vyčisti ho.", "Alltid ovanpå AION 2 och stjäl aldrig fokus. Ställ in genomskinlighet, fäll ihop till din rad, stoppa en strid för att rensa den.", "Her zaman AION 2’nin üstünde, odağı asla çalmaz. Saydamlığı ayarla, kendi satırına küçült, temizlemek için savaşı durdur.", "Всегда поверх AION 2 и не забирает фокус. Настрой прозрачность, сверни до своей строки, останови бой, чтобы очистить."],
+    t2h: ["Kill timer", "Kill-Timer", "Minuteur de kill", "Temporizador de muerte", "Timer di uccisione", "Timer de abate", "Licznik do zabicia", "Kill-timer", "Odpočet zabití", "Kill-timer", "Öldürme sayacı", "Таймер убийства"],
+    t2p: ["Time left on the boss from its real HP, and your best on it.", "Restzeit des Bosses aus seinen echten HP, dazu dein Bestwert.", "Le temps restant sur le boss d’après ses vrais PV, et votre record.", "El tiempo que le queda al jefe según su vida real, y tu récord en él.", "Il tempo rimasto al boss in base ai suoi veri PV, e il tuo record.", "Quanto falta para o chefe com base na vida real dele, e o seu recorde.", "Ile zostało bossowi według jego prawdziwego HP i twój rekord na nim.", "De resterende tijd van de baas op basis van zijn echte HP, en jouw record.", "Kolik zbývá bossovi podle jeho skutečných HP a tvůj rekord.", "Tiden kvar på bossen utifrån dess riktiga HP, och ditt rekord.", "Bossun gerçek HP’sine göre kalan süre ve o bosstaki rekorun.", "Сколько осталось боссу по его настоящему HP и твой рекорд на нём."],
+    t3h: ["Every skill, opened up", "Jede Fertigkeit im Detail", "Chaque compétence en détail", "Cada habilidad al detalle", "Ogni abilità nel dettaglio", "Cada habilidade em detalhe", "Każda umiejętność w szczegółach", "Elke vaardigheid ontleed", "Každá dovednost do detailu", "Varje förmåga i detalj", "Her yetenek ayrıntılı", "Каждый скилл как на ладони"],
+    t3p: ["Crit rate, biggest hit and casts per skill, and which boss skills hit you hardest.", "Kritrate, größter Treffer und Wirkungen pro Fertigkeit, und welche Boss-Angriffe dich am härtesten treffen.", "Taux de critique, plus gros coup et lancers par compétence, et les attaques du boss qui vous font le plus mal.", "Tasa de crítico, golpe más fuerte y lanzamientos por habilidad, y qué ataques del jefe te pegan más fuerte.", "Critico, colpo più forte e lanci per abilità, e quali attacchi del boss ti colpiscono di più.", "Taxa de crítico, maior golpe e usos por habilidade, e quais ataques do chefe batem mais forte em você.", "Szansa na kryt, najmocniejszy cios i użycia każdej umiejętności oraz to, które ataki bossa bolą cię najbardziej.", "Critkans, grootste klap en casts per vaardigheid, en welke aanvallen van de baas het hardst aankomen.", "Šance na kritický zásah, největší úder a použití každé dovednosti, a které útoky bosse tě bolí nejvíc.", "Kritchans, största träff och kast per förmåga, och vilka bossattacker som träffar dig hårdast.", "Yetenek başına kritik oranı, en büyük vuruş ve kullanım sayısı, ve bossun hangi saldırılarının sana en çok acıttığı.", "Крит, самый сильный удар и касты по каждому скиллу, и какие скиллы босса бьют тебя больнее всего."],
+    t4h: ["Events and field bosses", "Events und Feldbosse", "Événements et boss de terrain", "Eventos y jefes de campo", "Eventi e boss di campo", "Eventos e chefes de campo", "Wydarzenia i bossowie polowi", "Evenementen en veldbazen", "Události a polní bossové", "Händelser och fältbossar", "Etkinlikler ve saha bossları", "События и полевые боссы"],
+    t4p: ["Respawn timers and the event schedule, with a reminder on top of the game before each one.", "Respawn-Timer und Eventplan, mit Erinnerung über dem Spiel vor jedem Start.", "Timers de réapparition et calendrier des événements, avec un rappel par-dessus le jeu avant chacun.", "Temporizadores de reaparición y calendario de eventos, con un aviso encima del juego antes de cada uno.", "Timer di respawn e calendario eventi, con un promemoria sopra il gioco prima di ognuno.", "Timers de respawn e calendário de eventos, com um lembrete por cima do jogo antes de cada um.", "Timery respawnu i harmonogram wydarzeń z przypomnieniem nad grą przed każdym z nich.", "Respawntimers en het evenementenschema, met een herinnering boven de game vóór elk evenement.", "Časovače respawnu a rozpis událostí s připomínkou nad hrou před každou z nich.", "Respawn-timers och händelseschemat, med en påminnelse ovanpå spelet före varje.", "Yeniden doğma sayaçları ve etkinlik takvimi, her birinden önce oyunun üstünde hatırlatıcıyla.", "Таймеры респа и расписание событий, с напоминанием поверх игры перед каждым."],
+    t5h: ["Post the kill", "Teile den Kill", "Partagez le kill", "Presume del kill", "Condividi l’uccisione", "Mostre o abate", "Pochwal się zabiciem", "Deel de kill", "Pochlub se zabitím", "Visa upp killen", "Öldürmeyi paylaş", "Похвастайся убийством"],
+    t5p: ["Copy any fight as a clean card for Discord, or as text for the game chat.", "Kopiere jeden Kampf als saubere Karte für Discord oder als Text für den Spielchat.", "Copiez un combat en carte propre pour Discord, ou en texte pour le chat du jeu.", "Copia cualquier combate como una tarjeta limpia para Discord o como texto para el chat del juego.", "Copia qualsiasi scontro come scheda pulita per Discord o come testo per la chat di gioco.", "Copie qualquer luta como um cartão limpo para o Discord ou como texto para o chat do jogo.", "Skopiuj dowolną walkę jako czystą kartę na Discorda albo jako tekst na czat gry.", "Kopieer elk gevecht als nette kaart voor Discord, of als tekst voor de gamechat.", "Zkopíruj libovolný souboj jako čistou kartu pro Discord nebo jako text do herního chatu.", "Kopiera valfri strid som ett snyggt kort för Discord eller som text för spelchatten.", "Herhangi bir savaşı Discord için temiz bir kart ya da oyun sohbeti için metin olarak kopyala.", "Скопируй любой бой чистой карточкой для Discord или текстом для игрового чата."],
+    t6h: ["Six dark themes", "Sechs dunkle Designs", "Six thèmes sombres", "Seis temas oscuros", "Sei temi scuri", "Seis temas escuros", "Sześć ciemnych motywów", "Zes donkere thema’s", "Šest tmavých motivů", "Sex mörka teman", "Altı koyu tema", "Шесть тёмных тем"],
+    t6p: ["Each one recolours the app, the overlay and the notes. Pick one: this page wears it too.", "Jedes färbt App, Overlay und Hinweise um. Wähl eins: Diese Seite trägt es mit.", "Chacun recolore l’appli, l’overlay et les notes. Choisissez-en un : cette page le porte aussi.", "Cada uno recolorea la app, el overlay y los avisos. Elige uno: esta página también se lo pone.", "Ognuno ricolora l’app, l’overlay e le notifiche. Scegline uno: anche questa pagina lo indossa.", "Cada um recolore o app, o overlay e os avisos. Escolha um: esta página também o veste.", "Każdy przekolorowuje aplikację, nakładkę i powiadomienia. Wybierz jeden: ta strona też go założy.", "Elk thema kleurt de app, de overlay en de meldingen. Kies er een: deze pagina draagt het ook.", "Každý přebarví aplikaci, překryv i upozornění. Vyber si: tahle stránka si ho oblékne taky.", "Varje tema färgar om appen, overlayn och aviseringarna. Välj ett: den här sidan bär det också.", "Her biri uygulamayı, katmanı ve bildirimleri yeniden renklendirir. Birini seç: bu sayfa da onu giyer.", "Каждая перекрашивает приложение, оверлей и уведомления. Выбери: эта страница тоже переоденется."],
+    h2How: ["Angel reads the fight. It never touches the game.", "Angel liest den Kampf. Das Spiel fasst es nie an.", "Angel lit le combat. Il ne touche jamais au jeu.", "Angel lee el combate. Nunca toca el juego.", "Angel legge lo scontro. Non tocca mai il gioco.", "O Angel lê a luta. Nunca toca no jogo.", "Angel czyta walkę. Nigdy nie dotyka gry.", "Angel leest het gevecht. Het raakt de game nooit aan.", "Angel čte souboj. Hry se nikdy nedotkne.", "Angel läser striden. Den rör aldrig spelet.", "Angel savaşı okur. Oyuna asla dokunmaz.", "Angel читает бой. И никогда не трогает игру."],
+    leadHow: ["The server already tells your game client every hit. Angel listens to that same traffic on your PC and counts it.", "Der Server schickt deinem Client ohnehin jeden Treffer. Angel hört denselben Datenverkehr auf deinem PC mit und zählt ihn.", "Le serveur envoie déjà chaque coup à votre client. Angel écoute ce même trafic sur votre PC et le compte.", "El servidor ya envía cada golpe a tu cliente. Angel escucha ese mismo tráfico en tu PC y lo cuenta.", "Il server invia già ogni colpo al tuo client. Angel ascolta lo stesso traffico sul tuo PC e lo conta.", "O servidor já envia cada golpe ao seu cliente. O Angel escuta esse mesmo tráfego no seu PC e o conta.", "Serwer i tak wysyła twojemu klientowi każde trafienie. Angel słucha tego samego ruchu na twoim PC i go liczy.", "De server stuurt elke treffer al naar je client. Angel luistert op je pc naar datzelfde verkeer en telt het.", "Server tvému klientovi stejně posílá každý zásah. Angel poslouchá stejný provoz na tvém PC a počítá ho.", "Servern skickar redan varje träff till din klient. Angel lyssnar på samma trafik på din dator och räknar den.", "Sunucu her vuruşu zaten istemcine gönderir. Angel bilgisayarında aynı trafiği dinler ve sayar.", "Сервер и так сообщает клиенту игры о каждом ударе. Angel слушает этот же трафик на твоём ПК и считает его."],
+    s1h: ["The game server", "Der Spielserver", "Le serveur du jeu", "El servidor del juego", "Il server di gioco", "O servidor do jogo", "Serwer gry", "De gameserver", "Herní server", "Spelservern", "Oyun sunucusu", "Игровой сервер"],
+    s1p: ["Sends your client each hit, heal and kill as the fight happens.", "Schickt deinem Client jeden Treffer, jede Heilung und jeden Kill, während der Kampf läuft.", "Envoie à votre client chaque coup, soin et kill pendant le combat.", "Envía a tu cliente cada golpe, curación y muerte durante el combate.", "Invia al tuo client ogni colpo, cura e uccisione durante lo scontro.", "Envia ao seu cliente cada golpe, cura e abate durante a luta.", "Wysyła klientowi każde trafienie, leczenie i zabójstwo w trakcie walki.", "Stuurt je client elke treffer, genezing en kill terwijl het gevecht loopt.", "Posílá klientovi každý zásah, léčení a zabití během souboje.", "Skickar varje träff, helning och kill till din klient medan striden pågår.", "Savaş sürerken istemcine her vuruşu, iyileştirmeyi ve öldürmeyi gönderir.", "Отправляет клиенту каждый удар, хил и убийство по ходу боя."],
+    s2h: ["Your network card", "Deine Netzwerkkarte", "Votre carte réseau", "Tu tarjeta de red", "La tua scheda di rete", "A sua placa de rede", "Twoja karta sieciowa", "Je netwerkkaart", "Tvá síťová karta", "Ditt nätverkskort", "Ağ kartın", "Твоя сетевая карта"],
+    s2p: ["Npcap, the free driver Wireshark uses, lets Angel see that traffic. Angel installs it for you.", "Npcap, der kostenlose Treiber von Wireshark, lässt Angel diesen Verkehr sehen. Angel installiert ihn für dich.", "Npcap, le pilote gratuit utilisé par Wireshark, permet à Angel de voir ce trafic. Angel l’installe pour vous.", "Npcap, el controlador gratuito que usa Wireshark, deja a Angel ver ese tráfico. Angel lo instala por ti.", "Npcap, il driver gratuito usato da Wireshark, permette ad Angel di vedere quel traffico. Angel lo installa per te.", "O Npcap, o driver gratuito usado pelo Wireshark, deixa o Angel ver esse tráfego. O Angel o instala para você.", "Npcap, darmowy sterownik używany przez Wiresharka, pozwala Angel widzieć ten ruch. Angel instaluje go za ciebie.", "Npcap, de gratis driver die Wireshark gebruikt, laat Angel dat verkeer zien. Angel installeert hem voor je.", "Npcap, bezplatný ovladač, který používá Wireshark, umožní Angelu ten provoz vidět. Angel ho nainstaluje za tebe.", "Npcap, den gratis drivrutinen som Wireshark använder, låter Angel se trafiken. Angel installerar den åt dig.", "Wireshark’ın kullandığı ücretsiz sürücü Npcap, Angel’ın bu trafiği görmesini sağlar. Angel onu senin için kurar.", "Npcap, бесплатный драйвер из Wireshark, даёт Angel видеть этот трафик. Angel ставит его сам."],
+    s3h: ["Counted. Nothing sent.", "Gezählt. Nichts gesendet.", "Compté. Rien d’envoyé.", "Contado. Nada enviado.", "Contato. Nulla inviato.", "Contado. Nada enviado.", "Policzone. Nic nie wysłane.", "Geteld. Niets verstuurd.", "Spočítáno. Nic neodesláno.", "Räknat. Inget skickat.", "Sayıldı. Hiçbir şey gönderilmedi.", "Посчитано. Ничего не отправлено."],
+    s3p: ["Packets become damage and DPS. Angel sends nothing and writes nothing to the game.", "Pakete werden zu Schaden und DPS. Angel sendet nichts und schreibt nichts ins Spiel.", "Les paquets deviennent dégâts et DPS. Angel n’envoie rien et n’écrit rien dans le jeu.", "Los paquetes se convierten en daño y DPS. Angel no envía nada ni escribe nada en el juego.", "I pacchetti diventano danni e DPS. Angel non invia nulla e non scrive nulla nel gioco.", "Os pacotes viram dano e DPS. O Angel não envia nada e não escreve nada no jogo.", "Pakiety zamieniają się w obrażenia i DPS. Angel niczego nie wysyła i niczego nie zapisuje w grze.", "Pakketten worden schade en DPS. Angel verstuurt niets en schrijft niets naar de game.", "Z paketů se stane poškození a DPS. Angel nic neodesílá a nic do hry nezapisuje.", "Paketen blir skada och DPS. Angel skickar ingenting och skriver ingenting till spelet.", "Paketler hasara ve DPS’e dönüşür. Angel hiçbir şey göndermez, oyuna hiçbir şey yazmaz.", "Пакеты превращаются в урон и DPS. Angel ничего не отправляет и ничего не пишет в игру."],
+    f1: ["No injection", "Keine Injektion", "Aucune injection", "Sin inyección", "Nessuna iniezione", "Sem injeção", "Bez wstrzykiwania", "Geen injectie", "Žádné injektování", "Ingen injicering", "Enjeksiyon yok", "Без инжекта"],
+    f2: ["No memory reading", "Kein Speicherlesen", "Aucune lecture mémoire", "Sin leer memoria", "Nessuna lettura della memoria", "Sem leitura de memória", "Bez czytania pamięci", "Geen geheugen lezen", "Žádné čtení paměti", "Ingen minnesläsning", "Bellek okuma yok", "Без чтения памяти"],
+    f3: ["Works through VPNs and ping boosters", "Funktioniert mit VPN und Ping-Boostern", "Fonctionne avec VPN et boosters de ping", "Funciona con VPN y boosters de ping", "Funziona con VPN e ping booster", "Funciona com VPN e boosters de ping", "Działa z VPN i boosterami pingu", "Werkt met VPN’s en pingboosters", "Funguje přes VPN a ping boostery", "Fungerar med VPN och pingboosters", "VPN ve ping artırıcılarla çalışır", "Работает через VPN и бустеры пинга"],
+    f4: ["Names and icons built in", "Namen und Icons integriert", "Noms et icônes intégrés", "Nombres e iconos incluidos", "Nomi e icone inclusi", "Nomes e ícones embutidos", "Nazwy i ikony wbudowane", "Namen en iconen ingebouwd", "Jména a ikony zabudované", "Namn och ikoner inbyggda", "İsimler ve simgeler dahili", "Имена и иконки встроены"],
+    f5: ["12 languages", "12 Sprachen", "12 langues", "12 idiomas", "12 lingue", "12 idiomas", "12 języków", "12 talen", "12 jazyků", "12 språk", "12 dil", "12 языков"],
+    h2End: ["Know who carries. Starting with the next pull.", "Wissen, wer trägt. Ab dem nächsten Pull.", "Sachez qui porte le groupe. Dès le prochain pull.", "Descubre quién carga al grupo. Desde el próximo pull.", "Scopri chi porta il gruppo. Dal prossimo pull.", "Saiba quem carrega. A partir do próximo pull.", "Zobacz, kto ciągnie drużynę. Od następnego pulla.", "Weet wie de groep draagt. Vanaf de volgende pull.", "Zjisti, kdo táhne skupinu. Od příštího pullu.", "Se vem som bär gruppen. Från nästa pull.", "Grubu kimin taşıdığını gör. Bir sonraki pull’dan itibaren.", "Узнай, кто тащит. С первого же пула."],
+    st1: ["Buy on FunPay", "Auf FunPay kaufen", "Achetez sur FunPay", "Cómpralo en FunPay", "Acquista su FunPay", "Compre no FunPay", "Kup na FunPay", "Koop op FunPay", "Kup na FunPay", "Köp på FunPay", "FunPay’den satın al", "Купи на FunPay"],
+    st2: ["Run Angel 1.0.exe", "Angel 1.0.exe starten", "Lancez Angel 1.0.exe", "Ejecuta Angel 1.0.exe", "Avvia Angel 1.0.exe", "Execute o Angel 1.0.exe", "Uruchom Angel 1.0.exe", "Start Angel 1.0.exe", "Spusť Angel 1.0.exe", "Kör Angel 1.0.exe", "Angel 1.0.exe’yi çalıştır", "Запусти Angel 1.0.exe"],
+    st3: ["Install Npcap and play", "Npcap installieren und spielen", "Installez Npcap et jouez", "Instala Npcap y juega", "Installa Npcap e gioca", "Instale o Npcap e jogue", "Zainstaluj Npcap i graj", "Installeer Npcap en speel", "Nainstaluj Npcap a hraj", "Installera Npcap och spela", "Npcap’i kur ve oyna", "Поставь Npcap и играй"],
+    disc: ["Fan-made tool. Not affiliated with NCSOFT. AION is a trademark of NCSOFT Corporation.", "Fan-Projekt. Nicht mit NCSOFT verbunden. AION ist eine Marke der NCSOFT Corporation.", "Outil de fan. Non affilié à NCSOFT. AION est une marque de NCSOFT Corporation.", "Herramienta de fans. Sin relación con NCSOFT. AION es una marca de NCSOFT Corporation.", "Strumento amatoriale. Non affiliato a NCSOFT. AION è un marchio di NCSOFT Corporation.", "Ferramenta feita por fãs. Sem vínculo com a NCSOFT. AION é uma marca da NCSOFT Corporation.", "Narzędzie fanowskie. Niezwiązane z NCSOFT. AION jest znakiem towarowym NCSOFT Corporation.", "Fanproject. Niet verbonden aan NCSOFT. AION is een handelsmerk van NCSOFT Corporation.", "Fanouškovský nástroj. Není spojen s NCSOFT. AION je ochranná známka společnosti NCSOFT Corporation.", "Fanverktyg. Inte associerat med NCSOFT. AION är ett varumärke som tillhör NCSOFT Corporation.", "Hayran yapımı araç. NCSOFT ile bağlantılı değildir. AION, NCSOFT Corporation’ın ticari markasıdır.", "Фанатский инструмент. Не связан с NCSOFT. AION — товарный знак NCSOFT Corporation."],
+    pace: ["left at the party’s pace", "übrig im Tempo der Gruppe", "restant au rythme du groupe", "restante al ritmo del grupo", "rimasto al ritmo del gruppo", "restante no ritmo do grupo", "zostało w tempie drużyny", "over in het tempo van de groep", "zbývá v tempu skupiny", "kvar i gruppens takt", "grubun hızında kalan", "осталось в темпе группы"],
+    in: ["in {t}", "in {t}", "dans {t}", "en {t}", "tra {t}", "em {t}", "za {t}", "over {t}", "za {t}", "om {t}", "{t} sonra", "через {t}"],
+    // The app's own labels (src/lib/i18n.ts), for the window and the overlay.
+    time: ["Time", "Zeit", "Durée", "Tiempo", "Tempo", "Tempo", "Czas", "Tijd", "Čas", "Tid", "Süre", "Время"],
+    damage: ["Damage", "Schaden", "Dégâts", "Daño", "Danni", "Dano", "Obrażenia", "Schade", "Poškození", "Skada", "Hasar", "Урон"],
+    killIn: ["Kill in", "Tod in", "Mort dans", "Muere en", "Muore tra", "Morre em", "Zabicie za", "Dood over", "Zabití za", "Död om", "Ölüme kalan", "Убийство через"],
+    best: ["My best", "Mein Bestwert", "Mon record", "Mi récord", "Mio record", "Meu recorde", "Mój rekord", "Mijn record", "Můj rekord", "Mitt rekord", "Rekorum", "Мой рекорд"],
+    name: ["Name", "Name", "Nom", "Nombre", "Nome", "Nome", "Gracz", "Naam", "Jméno", "Namn", "İsim", "Имя"],
+    lvl: ["Lvl", "Lvl", "Niv", "Nv", "Liv", "Nv", "Poz", "Niv", "Úr", "Niv", "Sv", "Ур"],
+    gear: ["Gear", "Ausr.", "Équip.", "Equipo", "Equip.", "Equip.", "Ekw.", "Uitr.", "Výbava", "Utr.", "Ekip.", "Гир"],
+    healing: ["Healing", "Heilung", "Soins", "Curación", "Cure", "Cura", "Leczenie", "Genezing", "Léčení", "Helning", "İyileştirme", "Лечение"],
+    taken: ["Taken", "Erhalten", "Subis", "Recibido", "Subiti", "Recebido", "Otrzymane", "Ontvangen", "Přijaté", "Mottaget", "Alınan", "Получено"],
+    partyDamage: ["Party damage", "Gruppenschaden", "Dégâts du groupe", "Daño del grupo", "Danni del gruppo", "Dano do grupo", "Obrażenia drużyny", "Groepsschade", "Poškození skupiny", "Gruppens skada", "Grup hasarı", "Урон группы"],
+    stop: ["Stop", "Stopp", "Stop", "Detener", "Stop", "Parar", "Stop", "Stop", "Stop", "Stopp", "Durdur", "Стоп"],
+    copy: ["Copy stats", "Statistik kopieren", "Copier les stats", "Copiar estadísticas", "Copia statistiche", "Copiar estatísticas", "Kopiuj statystyki", "Statistieken kopiëren", "Kopírovat statistiky", "Kopiera statistik", "İstatistikleri kopyala", "Копировать статистику"],
+    overlay: ["Overlay", "Overlay", "Overlay", "Overlay", "Overlay", "Overlay", "Nakładka", "Overlay", "Překryv", "Overlay", "Katman", "Оверлей"],
+    killed: ["Killed in {t}", "Besiegt in {t}", "Vaincu en {t}", "Derrotado en {t}", "Sconfitto in {t}", "Derrotado em {t}", "Pokonany w {t}", "Verslagen in {t}", "Poražen za {t}", "Besegrad på {t}", "{t} içinde yenildi", "Убит за {t}"],
+    Midnight: ["Midnight", "Mitternacht", "Minuit", "Medianoche", "Mezzanotte", "Meia-noite", "Północ", "Middernacht", "Půlnoc", "Midnatt", "Gece yarısı", "Полночь"],
+    Graphite: ["Graphite", "Graphit", "Graphite", "Grafito", "Grafite", "Grafite", "Grafit", "Grafiet", "Grafit", "Grafit", "Grafit", "Графит"],
+    Slate: ["Slate", "Schiefer", "Ardoise", "Pizarra", "Ardesia", "Ardósia", "Łupek", "Leisteen", "Břidlice", "Skiffer", "Arduvaz", "Сланец"],
+    Moss: ["Moss", "Moos", "Mousse", "Musgo", "Muschio", "Musgo", "Mech", "Mos", "Mech", "Mossa", "Yosun", "Мох"],
+    Ember: ["Ember", "Glut", "Braise", "Brasa", "Brace", "Brasa", "Żar", "Gloed", "Žhavé uhlíky", "Glöd", "Kor", "Угли"],
+    Rose: ["Rose", "Rose", "Rose", "Rosa", "Rosa", "Rosa", "Róża", "Roos", "Růže", "Ros", "Gül", "Роза"],
+  };
+  // Class names as each language's AION client has them.
+  const CLASS_NAMES = {
+    en: ['Gladiator', 'Templar', 'Assassin', 'Ranger', 'Sorcerer', 'Spiritmaster', 'Cleric', 'Chanter'],
+    de: ['Gladiator', 'Templer', 'Assassine', 'Jäger', 'Zauberer', 'Beschwörer', 'Kleriker', 'Kantor'],
+    fr: ['Gladiateur', 'Templier', 'Assassin', 'Rôdeur', 'Sorcier', 'Spiritualiste', 'Clerc', 'Aède'],
+    es: ['Gladiador', 'Templario', 'Asesino', 'Cazador', 'Hechicero', 'Invocador', 'Clérigo', 'Cantor'],
+    it: ['Gladiatore', 'Templare', 'Assassino', 'Ranger', 'Fattucchiere', 'Incantatore', 'Chierico', 'Cantore'],
+    pt: ['Gladiador', 'Templário', 'Assassino', 'Caçador', 'Feiticeiro', 'Espiritualista', 'Clérigo', 'Cantor'],
+    pl: ['Gladiator', 'Templariusz', 'Zabójca', 'Łowca', 'Czarodziej', 'Zaklinacz', 'Kleryk', 'Kantor'],
+    tr: ['Gladyatör', 'Tapınakçı', 'Suikastçı', 'Korucu', 'Büyücü', 'Ruh Ustası', 'Rahip', 'İlahici'],
+    ru: ['Гладиатор', 'Страж', 'Убийца', 'Стрелок', 'Волшебник', 'Заклинатель', 'Целитель', 'Чародей'],
+  };
+  const CLASS_IDS = ['gladiator', 'templar', 'assassin', 'ranger', 'sorcerer', 'elementalist', 'cleric', 'chanter'];
+
+  const KEY = 'angel.site.lang';
+  const store = { get() { try { return localStorage.getItem(KEY); } catch { return null; } }, set(v) { try { localStorage.setItem(KEY, v); } catch {} } };
+  // The visitor's own choice, else the first of the browser's languages we have
+  // (Ukrainian, Belarusian and Kazakh read the Russian page), else English.
+  const detect = () => {
+    const saved = store.get();
+    if (COL.includes(saved)) return saved;
+    const alias = { uk: 'ru', be: 'ru', kk: 'ru', nb: 'sv', no: 'sv', da: 'sv' };
+    for (const tag of navigator.languages || [navigator.language || 'en']) {
+      const base = String(tag).toLowerCase().split('-')[0];
+      if (COL.includes(base)) return base;
+      if (alias[base]) return alias[base];
+    }
+    return 'en';
+  };
+  let lang = detect();
+  const L = (key, t) => {
+    const row = T[key];
+    const s = row ? row[COL.indexOf(lang)] || row[0] : key;
+    return t === undefined ? s : s.replace('{t}', t);
+  };
+  const className = (id) => (CLASS_NAMES[lang] || CLASS_NAMES.en)[CLASS_IDS.indexOf(id)];
+
+  // ---------------------------------------------------------- the app, fitted to its frame
+  const app = document.getElementById('app');
+  const fit = document.getElementById('fit');
+  const size = () => {
+    const s = Math.min(1, fit.clientWidth / 1100);
+    app.style.transform = `scale(${s})`;
+    fit.style.height = 640 * s + 'px';
+  };
+  new ResizeObserver(size).observe(fit);
+  size();
+
+  // ---------------------------------------------------------- one fight, shown in the app and the overlay
+  const party = [
+    { name: 'Seraphine', cls: 'sorcerer', lvl: 45, gear: 3400, rate: 21500, me: true, heal: 0, taken: 0 },
+    { name: 'Mirra', cls: 'ranger', lvl: 45, gear: 3160, rate: 19200, heal: 0, taken: 0 },
+    { name: 'Kaelen', cls: 'gladiator', lvl: 44, gear: 3280, rate: 16800, heal: 0, taken: 1 },
+    { name: 'Thoren', cls: 'cleric', lvl: 44, gear: 3040, rate: 7400, heal: 1, taken: 1 },
+  ];
+  const aRows = document.getElementById('a-rows');
+  const oRows = document.getElementById('o-rows');
+  for (const p of party) {
+    p.dmg = 0; p.healed = 0; p.hurt = 0;
+    const r = document.createElement('div');
+    r.className = 'trow' + (p.me ? ' me' : '');
+    r.innerHTML = `<span class="who"><span class="ic" style="--icon:${ICON(p.cls)}"></span><div><b>${p.name}</b><small class="cls"></small></div></span><span class="m">${p.lvl}</span><span class="m">${p.gear}</span><span class="bar"><i></i></span><span class="v">0</span><span class="m d">0</span><span class="m h">·</span><span class="m tk">·</span><span class="m pc">0</span>`;
+    aRows.appendChild(r);
+    p.a = r;
+    const o = document.createElement('div');
+    o.className = 'orow' + (p.me ? ' me' : '');
+    o.innerHTML = `<span class="fill"></span><span class="ic" style="--icon:${ICON(p.cls)}"></span><span class="nm">${p.name}</span><span class="v">0</span><span class="p">0%</span>`;
+    oRows.appendChild(o);
+    p.o = o;
+    p.hist = [];
+  }
+  const HP = 6.0e6;
+  let t = 0;
+  const chart = document.getElementById('a-chart');
+  const COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500'];
+  const set = (el, sel, v) => (el.querySelector(sel).textContent = v);
+  const tick = (dt, animate) => {
+    t += dt;
+    for (const p of party) {
+      const d = p.rate * dt * (0.55 + Math.random() * 0.9) + (Math.random() < 0.08 ? p.rate * 1.6 : 0);
+      p.dmg += d;
+      p.hist.push(d / dt);
+      if (p.hist.length > 40) p.hist.shift();
+      if (p.heal) p.healed += 9000 * dt * (0.6 + Math.random() * 0.8);
+      if (p.taken) p.hurt += 5200 * dt * Math.random();
+    }
+    let total = party.reduce((s, p) => s + p.dmg, 0);
+    if (total >= HP) { t = 0; for (const p of party) { p.dmg = 0; p.healed = 0; p.hurt = 0; p.hist = []; } total = 0; }
+    const sorted = [...party].sort((a, b) => b.dmg - a.dmg);
+    const top = sorted[0].dmg || 1;
+    const sum = total || 1;
+    const sa = animate ? Flip.getState(aRows.children) : null;
+    const so = animate ? Flip.getState(oRows.children) : null;
+    for (const p of sorted) { aRows.appendChild(p.a); oRows.appendChild(p.o); }
+    if (animate) { Flip.from(sa, { duration: 0.45, ease: 'power2.out' }); Flip.from(so, { duration: 0.45, ease: 'power2.out' }); }
+    for (const p of party) {
+      const dps = t > 0 ? p.dmg / t : 0;
+      const share = p.dmg / top;
+      set(p.a, '.v', short(dps)); set(p.a, '.d', short(p.dmg)); set(p.a, '.pc', Math.round((p.dmg / sum) * 100));
+      if (p.heal) set(p.a, '.h', short(p.healed));
+      if (p.taken) set(p.a, '.tk', short(p.hurt));
+      set(p.o, '.v', short(dps)); set(p.o, '.p', Math.round((p.dmg / sum) * 100) + '%');
+      const bars = [p.a.querySelector('.bar i'), p.o.querySelector('.fill')];
+      if (animate) gsap.to(bars, { scaleX: share, duration: 0.5, ease: 'power2.out' });
+      else bars.forEach((b) => (b.style.transform = `scaleX(${share})`));
+    }
+    const pdps = t > 0 ? total / t : 0;
+    const ttk = pdps > 0 ? Math.max(0, (HP - total) / pdps) : 48;
+    for (const id of ['a-time', 'o-time']) document.getElementById(id).textContent = clock(t);
+    for (const id of ['a-dps', 'o-dps']) document.getElementById(id).textContent = short(pdps);
+    document.getElementById('a-dmg').textContent = short(total);
+    document.getElementById('a-side').textContent = '21:42 · ' + short(total);
+    for (const id of ['a-ttk', 'o-ttk']) document.getElementById(id).textContent = '~' + clock(ttk);
+    // The party chart: each player's last 40 ticks, smoothed a little.
+    const max = Math.max(1, ...party.flatMap((p) => p.hist));
+    chart.innerHTML = party.map((p, i) => {
+      const pts = p.hist.map((v, j) => `${(j / 39) * 800},${112 - (v / max) * 100}`).join(' ');
+      return `<polyline points="${pts}" fill="none" stroke="${COLORS[i]}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+    }).join('') + [30, 60, 90].map((y) => `<line x1="0" x2="800" y1="${y}" y2="${y}" stroke="rgb(255 255 255 / 0.06)" vector-effect="non-scaling-stroke"/>`).join('');
+  };
+  for (let i = 0; i < 26; i++) tick(0.6, false);
+  if (!reduce) setInterval(() => tick(0.6, G), 600);
+
+  // ---------------------------------------------------------- skills
+  const SKILLS = [['Flame Scattershot', 41, '17.4k', '159k'], ['Firebomb', 21, '17.0k', '79.3k'], ['Blaze', 20, '19.1k', '76.3k'], ['Firestorm', 18, '12.2k', '70.5k']];
+  document.getElementById('skills').innerHTML = SKILLS.map(([n, p, max, d]) => `<div class="sk"><b>${n}</b><span class="bar"><i style="transform:scaleX(${p / 41})"></i></span><small>${max}</small><span class="v">${d}</span></div>`).join('');
+
+  // ---------------------------------------------------------- events, counting down
+  const EVENTS = [['Shugo Festival', '#c98500', 4 * 60 + 56], ['Dimensional Invasion', '#199e70', 22 * 60 + 30], ['Melted Danar', '#d55181', 38 * 60 + 12], ['Spacetime Rift', '#9085e9', 54 * 60 + 5]];
+  const evEl = document.getElementById('events');
+  const drawEvents = () => {
+    evEl.innerHTML = EVENTS.map(([n, c, s]) => `<div class="ev${s < 300 ? ' soon' : ''}" style="--c:${c}"><i></i><b>${n}</b><span>${L('in', clock(s))}</span></div>`).join('');
+  };
+  if (!reduce) setInterval(() => { EVENTS.forEach((e) => (e[2] = e[2] > 0 ? e[2] - 1 : 3600)); drawEvents(); }, 1000);
+
+  // ---------------------------------------------------------- kill timer
+  let hpLeft = 0.38;
+  const kBig = document.getElementById('k-big');
+  const kHp = document.getElementById('k-hp');
+  const kV = document.getElementById('k-hpv');
+  const drawKill = () => {
+    kBig.textContent = '~' + clock(Math.round(hpLeft * 55));
+    kV.textContent = Math.round(hpLeft * 100) + '%';
+    if (G) gsap.to(kHp, { scaleX: hpLeft, duration: 0.8, ease: 'power2.out' });
+    else kHp.style.transform = `scaleX(${hpLeft})`;
+  };
+  drawKill();
+  if (!reduce) setInterval(() => { hpLeft -= 0.012 + Math.random() * 0.01; if (hpLeft <= 0.02) hpLeft = 1; drawKill(); }, 900);
+
+  // ---------------------------------------------------------- themes: the page takes the accent
+  const THEMES = [['Midnight', '#5fd7ff', '#000000'], ['Graphite', '#a78bfa', '#17171a'], ['Slate', '#60a5fa', '#151a21'], ['Moss', '#4ade80', '#141a17'], ['Ember', '#fb923c', '#1b1715'], ['Rose', '#f472b6', '#1b1519']];
+  const themesEl = document.getElementById('themes');
+  THEMES.forEach(([n, c, g], i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.theme = n;
+    b.style.setProperty('--c', c);
+    b.style.setProperty('--g', g);
+    b.setAttribute('aria-pressed', String(i === 0));
+    b.innerHTML = `<i></i><span></span>`;
+    b.addEventListener('click', () => {
+      themesEl.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      if (G) gsap.to(document.documentElement, { '--accent': c, duration: 0.6, ease: 'power2.out' });
+      else document.documentElement.style.setProperty('--accent', c);
+    });
+    themesEl.appendChild(b);
+  });
+
+  // ---------------------------------------------------------- the page in a language
+  const h1 = document.getElementById('headline');
+  const applyLang = () => {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-t]').forEach((el) => (el.textContent = L(el.dataset.t)));
+    document.querySelectorAll('[data-h]').forEach((el) => (el.innerHTML = L(el.dataset.h)));
+    for (const p of party) set(p.a, '.cls', className(p.cls));
+    document.getElementById('classes').innerHTML = CLASS_IDS.map((id) => `<span class="cl"><i style="--icon:${ICON(id)}"></i>${className(id)}</span>`).join('');
+    themesEl.querySelectorAll('button').forEach((b) => (b.querySelector('span').textContent = L(b.dataset.theme)));
+    document.getElementById('c-killed').textContent = L('killed', '2:31') + ' · DPS 54.3k';
+    drawEvents();
+  };
+  const picker = document.getElementById('lang');
+  picker.innerHTML = LANGS.map(([id, n]) => `<option value="${id}">${n}</option>`).join('');
+  picker.value = lang;
+  picker.addEventListener('change', () => {
+    lang = picker.value;
+    store.set(lang);
+    if (!G) return applyLang();
+    // A quick cross-fade so the switch reads as one change, not a flicker.
+    const parts = '.hero-copy, nav .links, nav .buy, section, footer';
+    gsap.to(parts, { opacity: 0, duration: 0.15, onComplete() {
+      applyLang();
+      gsap.to(parts, { opacity: 1, duration: 0.3 });
+    } });
+  });
+  applyLang();
+
+  if (!G) { document.getElementById('tilt').style.transform = 'none'; return; }
+
+  // ---------------------------------------------------------- the opening: the headline word by word
+  const words = h1.textContent.split(' ');
+  h1.innerHTML = words.map((w) => `<span style="display:inline-block">${w}</span>`).join(' ');
+  gsap.timeline({ defaults: { ease: 'power3.out' } })
+    .from('.pill', { y: 10, opacity: 0, duration: 0.5 })
+    .from('#headline span', { y: 28, opacity: 0, filter: 'blur(8px)', duration: 0.8, stagger: 0.06 }, '-=0.25')
+    .from('.hero .sub, .hero .row-ctas', { y: 14, opacity: 0, duration: 0.6, stagger: 0.08 }, '-=0.5')
+    .from('#stage', { y: 60, opacity: 0, duration: 1.1 }, '-=0.45');
+
+  // The window straightens as it scrolls up into view.
+  gsap.to('#tilt', { rotateX: 0, scale: 1, ease: 'none', scrollTrigger: { trigger: '#stage', start: 'top 85%', end: 'top 15%', scrub: true } });
+
+  // Tiles lift into place (they rest visible; only their offset animates).
+  gsap.utils.toArray('.tile').forEach((tile, i) => {
+    gsap.from(tile, { y: 36, duration: 0.8, ease: 'power3.out', delay: (i % 3) * 0.06, scrollTrigger: { trigger: tile, start: 'top 92%', once: true } });
+  });
+  gsap.utils.toArray('section.block h2, .end h2').forEach((h) => {
+    gsap.from(h, { y: 24, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: h, start: 'top 88%', once: true } });
+  });
+})();
+</script>
