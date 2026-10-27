@@ -1,0 +1,5 @@
+﻿# Only the landing lives here, never the app.
+*.exe
+*.zip
+*.msi
+
